@@ -1,0 +1,19 @@
+name: Rust CI
+
+on:
+  push:
+    branches: [ '*' ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Test with Cargo
+      run: cargo test
+    - name: Build with Cargo
+      run: cargo build --release
+    - uses: actions/upload-artifact@v2
+      with:
+        name: rust-maven-proxy
+        path: target/release/rust-maven-proxy
