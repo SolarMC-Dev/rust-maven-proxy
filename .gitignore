@@ -1,5 +1,6 @@
 # For rust-maven-proxy specifically
 config.ron
+rustfmt.toml
 
 ## Mac ##
 .DS_Store
