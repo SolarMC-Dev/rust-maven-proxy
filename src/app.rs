@@ -19,19 +19,22 @@
 
 use hyper::{Client, Server, Uri, Request, Response, Body, Method, StatusCode, http};
 use hyper::body::HttpBody;
-use hyper::client::ResponseFuture;
+use hyper::client::connect::Connect;
 use hyper::service::{make_service_fn, service_fn};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use hyper::http::uri::PathAndQuery;
 use hyper::http::request;
-use futures_util::future;
+use futures_util::{StreamExt, FutureExt};
+use futures_util::stream::FuturesUnordered;
 use crate::error::ProxyError;
 use std::str::FromStr;
 use std::future::Future;
 use tokio::time::timeout;
 use std::time::Duration;
-use hyper::client::connect::Connect;
+use std::error::Error;
+use std::fmt::Debug;
+use log::{log_enabled, Level};
 
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -105,7 +108,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
                              parts: &request::Parts,
                              gav: &PathAndQuery) -> Result<Response<Body>, ProxyError> {
 
-        let mut futures: Vec<ResponseFuture> = Vec::new();
+        let mut futures = FuturesUnordered::new();
         // Dispatch all requests
         for proxy_uri in &self.repositories {
             let request = {
@@ -115,39 +118,45 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
                 request_builder = request_builder.uri(backend_uri);
                 request_builder.body(Body::empty())?
             };
+            // Make request, add timeout, apply error handling
             log::trace!("Dispatching request to proxy repository: {:?}", request);
             let response_future = self.client.request(request);
+            let response_future = timeout(self.proxy_timeout, response_future);
+            let response_future = response_future.map(|result| {
+                // Turn Result into Option and log errors in the process
+                let opt_response: Option<Response<Body>> = handle_errors(result)
+                    .map(handle_errors)
+                    .flatten();
+                // Filter non-200 status codes
+                opt_response.filter(|response| match response.status() {
+                    StatusCode::OK => true,
+                    StatusCode::NOT_FOUND => false,
+                    status => {
+                        if log_enabled!(Level::Debug) {
+                            log::debug!("Received bad status {:?} from proxy response {:?}", status, response);
+                        } else {
+                            log::info!("Received bad status {:?} from a proxy response", status);
+                        }
+                        false
+                    }
+                })
+            });
             futures.push(response_future);
         }
-        // Await all responses
-        let all_responses: Vec<Response<Body>> = {
-            let combined_future = future::join_all(futures);
-            let results = timeout(self.proxy_timeout, combined_future).await?;
-            // Filter failed requests
-            results.into_iter().filter_map(|result| match result {
-                Ok(response) => Some(response),
-                Err(e) => {
-                    log::warn!("Encountered error while contacting proxy: {:?}", e);
-                    None
-                }
-            }).collect()
-        };
-        log::trace!("Awaited all requests successfully");
-        for proxy_response in all_responses {
-            let status = proxy_response.status();
-            if status == StatusCode::NOT_FOUND {
-                continue;
-            }
-            return if status == StatusCode::OK {
-                log::trace!("Found GAV {:?} from proxy response {:?}", &gav, &proxy_response);
-                Ok(proxy_response)
-            } else {
-                log::debug!("Received status {:?} from proxy response {:?}", status, &proxy_response);
-                Ok(Response::builder()
-                    .version(parts.version)
-                    .status(502)
-                    .body(Body::from(format!("Status code {} received from proxy", status)))?)
-            }
+        loop {
+            match futures.next().await {
+                Some(Some(response)) => {
+                    assert_eq!(StatusCode::OK, response.status());
+                    // Before returning, create a task to check errors in remaining requests
+                    tokio::task::spawn(async move {
+                        let _remaining: Vec<_> = futures.collect().await;
+                    });
+                    log::trace!("Found GAV {:?} from proxy response {:?}", &gav, &response);
+                    return Ok(response);
+                },
+                Some(None) => continue, // Not found or in error
+                None => break // No more requests remain in the stream
+            };
         }
         log::trace!("Unable to find GAV {:?} in any proxy", gav);
         Ok(Response::builder()
@@ -208,6 +217,16 @@ fn rewrite_uri(existing_uri: &Uri, gav: &PathAndQuery) -> Result<Uri, hyper::htt
     builder
         .path_and_query(proxy_path)
         .build()
+}
+
+fn handle_errors<R, E>(result: Result<R, E>) -> Option<R> where E: Error + Debug {
+    match result {
+        Err(error) => {
+            log::warn!("Error while contacting proxy: {:?}", error);
+            None
+        },
+        Ok(value) => Some(value)
+    }
 }
 
 #[cfg(test)]
