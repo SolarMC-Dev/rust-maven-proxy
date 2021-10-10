@@ -100,7 +100,7 @@ impl From<DurationSerializable> for Duration {
 mod tests {
     use super::*;
     use tempfile::tempdir;
-    use std::error::Error;
+    use eyre::Result;
     use hyper::http::uri::PathAndQuery;
 
     #[test]
@@ -113,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn url_assumptions() -> Result<(), Box<dyn Error>> {
+    fn url_assumptions() -> Result<()> {
         let uri = "https://repo1.maven.org/maven2";
         assert_eq!(uri,
                    Url::from_str(uri)?.as_str());
@@ -124,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn write_new_config() -> Result<(), Box<dyn Error>> {
+    fn write_new_config() -> Result<()> {
         let temp_dir = tempdir()?;
         let config_path = temp_dir.path().join(Path::new("config.ron"));
         let config: Config = Config::load_from(&config_path)?;
@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn reload_default_config() -> Result<(), Box<dyn Error>> {
+    fn reload_default_config() -> Result<()> {
         let temp_dir = tempdir()?;
         let config_path = temp_dir.path().join(Path::new("config.ron"));
         let _conf: Config = Config::load_from(&config_path)?;

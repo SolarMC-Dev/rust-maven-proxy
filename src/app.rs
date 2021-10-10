@@ -27,7 +27,7 @@ use hyper::http::uri::PathAndQuery;
 use hyper::http::request;
 use futures_util::{StreamExt, FutureExt};
 use futures_util::stream::FuturesUnordered;
-use crate::error::ProxyError;
+use eyre::Result;
 use std::str::FromStr;
 use std::future::Future;
 use tokio::time::timeout;
@@ -53,7 +53,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
         }
     }
 
-    fn homepage_response(version: http::version::Version) -> Result<Response<Body>, ProxyError> {
+    fn homepage_response(version: http::version::Version) -> Result<Response<Body>> {
         let error_message = format!(
             "A maven repository proxy backed by rust-maven-proxy version {}", PROGRAM_VERSION);
         let response = Response::builder()
@@ -64,7 +64,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
     }
 
     async fn handle_request(&self,
-                            original_request: Request<Body>) -> Result<Response<Body>, ProxyError> {
+                            original_request: Request<Body>) -> Result<Response<Body>> {
 
         if original_request.method() != Method::GET {
             let response = Response::builder()
@@ -106,7 +106,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
 
     async fn contact_proxies(&self,
                              parts: &request::Parts,
-                             gav: &PathAndQuery) -> Result<Response<Body>, ProxyError> {
+                             gav: &PathAndQuery) -> Result<Response<Body>> {
 
         let mut futures = FuturesUnordered::new();
         // Dispatch all requests
@@ -167,7 +167,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
 
     pub async fn start_on<F>(self,
                              socket: SocketAddr,
-                             shutdown_future: F) -> Result<(), ProxyError>
+                             shutdown_future: F) -> eyre::Result<()>
         where F: Future<Output=()> {
 
         let app: Arc<Self> = Arc::new(self);
@@ -175,7 +175,7 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
         let service_function = make_service_fn(move |_| {
             let app = app.clone();
             async {
-                Ok::<_, ProxyError>(service_fn(move |request: Request<Body>| {
+                Ok::<_, eyre::Error>(service_fn(move |request: Request<Body>| {
                     let app = app.clone();
                     async move { (&app).handle_request(request).await }
                 }))
@@ -197,7 +197,7 @@ fn copy_attributes(parts : &request::Parts, mut request_builder: request::Builde
     request_builder
 }
 
-fn rewrite_uri(existing_uri: &Uri, gav: &PathAndQuery) -> Result<Uri, hyper::http::Error> {
+fn rewrite_uri(existing_uri: &Uri, gav: &PathAndQuery) -> core::result::Result<Uri, hyper::http::Error> {
     let mut builder = Uri::builder();
     if let Some(scheme) = existing_uri.scheme() {
         builder = builder.scheme(scheme.clone());
@@ -219,7 +219,7 @@ fn rewrite_uri(existing_uri: &Uri, gav: &PathAndQuery) -> Result<Uri, hyper::htt
         .build()
 }
 
-fn handle_errors<R, E>(result: Result<R, E>) -> Option<R> where E: Error + Debug {
+fn handle_errors<R, E>(result: core::result::Result<R, E>) -> Option<R> where E: Error + Debug {
     match result {
         Err(error) => {
             log::warn!("Error while contacting proxy: {:?}", error);
@@ -233,11 +233,10 @@ fn handle_errors<R, E>(result: Result<R, E>) -> Option<R> where E: Error + Debug
 mod tests {
     use super::*;
     use std::str::FromStr;
-    use std::error::Error;
     use crate::app;
 
     #[test]
-    fn copy_attributes() -> Result<(), Box<dyn Error>> {
+    fn copy_attributes() -> Result<()> {
         let existing_request = Request::builder()
             .header("Accept", "text/html")
             .header("X-Custom-Foo", "foo")
@@ -256,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn rewrite_uri() -> Result<(), Box<dyn Error>> {
+    fn rewrite_uri() -> Result<()> {
         let gav_raw = "/org/apache/maven/plugins/maven-compiler-plugin/3.8.1/maven-compiler-plugin-3.8.1.pom";
         let gav = PathAndQuery::from_str(gav_raw)?;
         let proxy_uri_raw = "https://repo1.maven.org/maven2";

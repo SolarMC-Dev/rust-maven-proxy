@@ -8,6 +8,8 @@ repository = "https://github.com/SolarMC-Dev/rust-maven-proxy"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
+eyre = "0.6.5"
+stable-eyre = "0.2.2"
 serde = { version = "1.0.130", features = ["derive"] }
 ron = "0.6.5"
 log = { version = "0.4.14", features = ["serde"] }

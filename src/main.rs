@@ -21,19 +21,20 @@
 
 mod app;
 mod config;
-mod error;
 
 use app::Application;
 use hyper::Client;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
 use crate::config::Config;
-use crate::error::ProxyError;
+use eyre::Result;
 use simple_logger::SimpleLogger;
 use hyper_rustls::HttpsConnector;
 
 #[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), ProxyError> {
+async fn main() -> Result<()> {
+    stable_eyre::install()?;
+
     let config_path = Path::new("config.ron");
     println!("Loading configuration from {:?}", config_path);
     let config = Config::load_from(config_path).expect("Failed to load config");
