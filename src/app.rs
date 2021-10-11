@@ -17,7 +17,7 @@
  * and navigate to version 3 of the GNU Affero General Public License.
  */
 
-use hyper::{Client, Server, Uri, Request, Response, Body, Method, StatusCode, http};
+use hyper::{Client, Server, Uri, Request, Response, Body, StatusCode, http};
 use hyper::body::HttpBody;
 use hyper::client::connect::Connect;
 use hyper::service::{make_service_fn, service_fn};
@@ -231,6 +231,7 @@ mod tests {
     use super::*;
     use std::str::FromStr;
     use crate::app;
+    use hyper::Method;
 
     #[test]
     fn copy_attributes() -> Result<()> {
