@@ -21,6 +21,7 @@
 
 mod app;
 mod config;
+mod request;
 
 use app::Application;
 use hyper::Client;

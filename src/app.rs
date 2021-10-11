@@ -35,6 +35,7 @@ use std::time::Duration;
 use std::error::Error;
 use std::fmt::Debug;
 use log::{log_enabled, Level};
+use crate::request::AllowedMethod;
 
 const PROGRAM_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -66,13 +67,9 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
     async fn handle_request(&self,
                             original_request: Request<Body>) -> Result<Response<Body>> {
 
-        if original_request.method() != Method::GET {
-            let response = Response::builder()
-                .version(original_request.version())
-                .status(405)
-                .header("Allow", "GET")
-                .body(Body::from("Only GET requests are allowed to rust-maven-proxy."));
-            return Ok(response?);
+        let allowed_method = AllowedMethod::find_from(original_request.method());
+        if allowed_method.is_none() {
+            return AllowedMethod::respond_with_405(original_request.version());
         }
         let (parts, body) = original_request.into_parts();
         let gav: &PathAndQuery = match parts.uri.path_and_query() {
@@ -95,11 +92,11 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
         }
         if !body.is_end_stream() {
             // Check if body is empty to conform to HTTP specification
-            log::debug!("Received HTTP GET request with non-empty body: {:?}", &parts);
+            log::debug!("Received HTTP request with non-empty body: {:?}", &parts);
             return Ok(Response::builder()
                 .version(parts.version)
                 .status(400)
-                .body(Body::from("A GET request must have an empty body"))?);
+                .body(Body::from("A request must have an empty body"))?);
         }
         self.contact_proxies(&parts, gav).await
     }
