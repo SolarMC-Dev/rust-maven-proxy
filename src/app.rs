@@ -124,9 +124,9 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
                 let opt_response: Option<Response<Body>> = handle_errors(result)
                     .map(handle_errors)
                     .flatten();
-                // Filter non-200 status codes
+                // Filter status codes
                 opt_response.filter(|response| match response.status() {
-                    StatusCode::OK => true,
+                    StatusCode::OK | StatusCode::NOT_MODIFIED => true,
                     StatusCode::NOT_FOUND => false,
                     status => {
                         if log_enabled!(Level::Debug) {
@@ -143,7 +143,6 @@ impl<C> Application<C> where C: Connect + Clone + Send + Sync + 'static {
         loop {
             match futures.next().await {
                 Some(Some(response)) => {
-                    assert_eq!(StatusCode::OK, response.status());
                     // Before returning, create a task to check errors in remaining requests
                     tokio::task::spawn(async move {
                         let _remaining: Vec<_> = futures.collect().await;
