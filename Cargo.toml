@@ -2,7 +2,7 @@
 name = "rust-maven-proxy"
 version = "0.1.0"
 authors = ["A248 <theanandbeh@gmail.com>"]
-edition = "2018"
+edition = "2021"
 description = "Simple and fast maven repository proxy"
 repository = "https://github.com/SolarMC-Dev/rust-maven-proxy"
 license = "AGPL-3.0-or-later"
